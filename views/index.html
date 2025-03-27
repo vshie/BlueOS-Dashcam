@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Recorder</title>
+    <script src="/static/vue.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #212121;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #2c2c2c;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        h1, h2, h3 {
+            color: #ffffff;
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin-top: 25px;
+            font-size: 1.4em;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        h3 {
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .status.armed {
+            background-color: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
+            color: #4CAF50;
+        }
+        .status.disarmed {
+            background-color: rgba(244, 67, 54, 0.2);
+            border: 1px solid #F44336;
+            color: #F44336;
+        }
+        .section {
+            margin-bottom: 30px;
+            background-color: #333333;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .stream-list {
+            list-style: none;
+            padding: 0;
+        }
+        .stream-item {
+            background-color: #424242;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stream-item.active {
+            border-left: 4px solid #4CAF50;
+        }
+        .stream-content {
+            flex: 1;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .setting-item {
+            background-color: #424242;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .setting-item label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+        .setting-item span {
+            color: #e0e0e0;
+        }
+        form {
+            margin-top: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #bbb;
+        }
+        input, select {
+            margin-bottom: 15px;
+            padding: 10px;
+            width: 100%;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #3a3a3a;
+            color: #e0e0e0;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        input[type="number"] {
+            max-width: 150px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #3e8e41;
+        }
+        button.delete {
+            background-color: #F44336;
+        }
+        button.delete:hover {
+            background-color: #d32f2f;
+        }
+        .alert {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            background-color: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
+            color: #4CAF50;
+        }
+        .alert-info {
+            background-color: rgba(33, 150, 243, 0.2);
+            border-color: #2196F3;
+            color: #2196F3;
+        }
+        .stream-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .readonly-value {
+            font-weight: normal;
+            color: #e0e0e0;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: end;
+        }
+        @media (max-width: 600px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            overflow: auto;
+        }
+        .modal-active {
+            display: block;
+        }
+        .modal-content {
+            background-color: #333;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 500px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: -10px;
+        }
+        .close:hover {
+            color: #fff;
+        }
+        .disk-space {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #424242;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .disk-space-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .disk-space-title {
+            font-weight: bold;
+            color: #aaa;
+        }
+        .refresh-time {
+            font-size: 0.8em;
+            color: #888;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #555;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 10px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: width 0.5s ease;
+        }
+        .progress-fill.good {
+            background-color: #4CAF50;
+        }
+        .progress-fill.warning {
+            background-color: #FFC107;
+        }
+        .progress-fill.critical {
+            background-color: #F44336;
+        }
+        .progress-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+        }
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <div class="container">
+            <h1>Video Recorder</h1>
+            
+            <!-- Alert for notifications -->
+            <div class="alert" v-if="message" :class="messageClass">
+                {{ message }}
+            </div>
+            
+            <div class="status" :class="{'armed': isArmed, 'disarmed': !isArmed}">
+                Vehicle Status: <strong>{{ isArmed ? 'ARMED' : 'DISARMED' }}</strong>
+            </div>
+
+            <div class="section">
+                <h2>Active Recordings</h2>
+                <ul class="stream-list">
+                    <li v-if="activeRecordings.length === 0" class="stream-item">No active recordings</li>
+                    <li v-for="stream in activeRecordings" class="stream-item active">
+                        <div class="stream-content">{{ stream }}</div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>Streams Configuration</h2>
+                    <button @click="openModal">Add Stream</button>
+                </div>
+                <ul class="stream-list">
+                    <li v-if="configuredStreams.length === 0" class="stream-item">No streams configured</li>
+                    <li v-for="stream in configuredStreams" class="stream-item">
+                        <div class="stream-content">
+                            <strong>{{ stream.name }}</strong><br>
+                            URL: {{ stream.url }}
+                        </div>
+                        <form action="/delete_stream" method="post" style="margin: 0;">
+                            <input type="hidden" name="stream_name" :value="stream.name">
+                            <button type="submit" class="delete">Delete</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2>Settings</h2>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>Log Folder</label>
+                        <span class="readonly-value">{{ settings.log_folder }}</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>Video Folder</label>
+                        <span class="readonly-value">{{ settings.video_folder }}</span>
+                    </div>
+                </div>
+                
+                <!-- Disk Space Indicator -->
+                <div class="disk-space">
+                    <div class="disk-space-header">
+                        <div class="disk-space-title">Video Folder Free Space</div>
+                        <div class="refresh-time">Updated <span>{{ lastUpdatedText }}</span></div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" :class="diskSpaceClass" :style="{ width: usedSpacePercentage + '%' }"></div>
+                        <div class="progress-text">{{ diskSpaceText }}</div>
+                    </div>
+                </div>
+                
+                <form action="/update_settings" method="post">
+                    <h3>Update Settings</h3>
+                    <div class="form-grid">
+                        <div>
+                            <label for="minimum_free_space_mb">Minimum Free Space (MB):</label>
+                            <input type="number" id="minimum_free_space_mb" name="minimum_free_space_mb" 
+                                   :value="settings.minimum_free_space_mb" required>
+                        </div>
+                        <div>
+                            <label for="out_of_space_action">Out of Space Action:</label>
+                            <select id="out_of_space_action" name="out_of_space_action" :value="settings.out_of_space_action">
+                                <option value="stop">Stop Recording</option>
+                                <option value="delete_oldest_video">Delete Oldest Video</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button type="submit">Save Settings</button>
+                        </div>
+                    </div>
+                </form>
+                
+                <form action="/delete_oldest" method="post" style="margin-top: 20px;">
+                    <button type="submit" class="delete">Delete Oldest Video Now</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Add Stream Modal -->
+        <div class="modal" :class="{'modal-active': isModalOpen}" @click.self="closeModal">
+            <div class="modal-content">
+                <span class="close" @click="closeModal">&times;</span>
+                <h3>Add/Edit Stream</h3>
+                <form action="/add_stream" method="post">
+                    <label for="stream_name">Stream Name:</label>
+                    <input type="text" id="stream_name" name="stream_name" required>
+                    
+                    <label for="stream_url">Stream URL:</label>
+                    <input type="text" id="stream_url" name="stream_url" required placeholder="rtsp://example.com/stream1">
+                    
+                    <button type="submit">Save Stream</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Initial data from server -->
+    <script id="initial-data" type="application/json">
+        {{ initial_data|safe }}
+    </script>
+    
+    <script>
+        // Format bytes to human-readable format
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+        
+        // Extract message from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const messageFromUrl = urlParams.get('message');
+        
+        // Get initial data from server
+        const initialDataElement = document.getElementById('initial-data');
+        const initialData = JSON.parse(initialDataElement.textContent);
+        
+        // Create Vue app
+        const app = Vue.createApp({
+            data() {
+                return {
+                    // Vehicle and recording state
+                    isArmed: initialData.is_armed,
+                    activeRecordings: initialData.active_recordings || [],
+                    
+                    // Streams and settings
+                    configuredStreams: initialData.streams || [],
+                    settings: {
+                        log_folder: initialData.settings.log_folder,
+                        video_folder: initialData.settings.video_folder,
+                        minimum_free_space_mb: initialData.settings.minimum_free_space_mb,
+                        out_of_space_action: initialData.settings.out_of_space_action || 'stop'
+                    },
+                    
+                    // Disk space info
+                    diskSpace: {
+                        freeBytes: 0,
+                        totalBytes: 0,
+                        freeMb: 0,
+                        minimumFreeMb: initialData.settings.minimum_free_space_mb
+                    },
+                    
+                    // UI state
+                    isModalOpen: false,
+                    updateTimer: null,
+                    secondsLeft: 0,
+                    message: messageFromUrl || "",
+                    messageClass: "alert-info"
+                };
+            },
+            computed: {
+                usedSpacePercentage() {
+                    if (!this.diskSpace.totalBytes) return 0;
+                    return (1 - (this.diskSpace.freeBytes / this.diskSpace.totalBytes)) * 100;
+                },
+                freeSpacePercentage() {
+                    return 100 - this.usedSpacePercentage;
+                },
+                diskSpaceClass() {
+                    if (this.freeSpacePercentage < 10) {
+                        return 'critical';
+                    } else if (this.freeSpacePercentage < 20) {
+                        return 'warning';
+                    } else {
+                        return 'good';
+                    }
+                },
+                diskSpaceText() {
+                    if (!this.diskSpace.freeBytes && !this.diskSpace.totalBytes) {
+                        return 'Loading...';
+                    }
+                    return `${formatBytes(this.diskSpace.freeBytes)} free of ${formatBytes(this.diskSpace.totalBytes)} (${this.freeSpacePercentage.toFixed(1)}% free)`;
+                },
+                lastUpdatedText() {
+                    if (this.secondsLeft === 0) {
+                        return 'updating...';
+                    } else if (this.secondsLeft === 10) {
+                        return 'just now';
+                    } else {
+                        return `${this.secondsLeft}s ago`;
+                    }
+                }
+            },
+            methods: {
+                openModal() {
+                    this.isModalOpen = true;
+                    // Clear any existing update timer when modal is opened
+                    if (this.updateTimer) {
+                        clearInterval(this.updateTimer);
+                        this.updateTimer = null;
+                    }
+                },
+                closeModal() {
+                    this.isModalOpen = false;
+                    // Resume updates when modal is closed
+                    this.startUpdateCycle();
+                },
+                updateDiskSpace() {
+                    if (this.isModalOpen) return;
+                    
+                    fetch('/disk_space')
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log('Disk space data:', data);
+                            this.diskSpace = data;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching disk space:', error);
+                        });
+                },
+                updateStreamsStatus() {
+                    if (this.isModalOpen) return;
+                    
+                    fetch('/stream_status')
+                        .then(response => response.json())
+                        .then(data => {
+                            this.isArmed = data.is_armed;
+                            this.activeRecordings = data.active_recordings;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching stream status:', error);
+                        });
+                },
+                startUpdateCycle() {
+                    // First update immediately
+                    this.updateDiskSpace();
+                    this.updateStreamsStatus();
+                    
+                    // Start countdown
+                    this.secondsLeft = 10;
+                    
+                    // Set up interval for countdown
+                    if (this.updateTimer) {
+                        clearInterval(this.updateTimer);
+                    }
+                    
+                    this.updateTimer = setInterval(() => {
+                        if (this.isModalOpen) {
+                            clearInterval(this.updateTimer);
+                            this.updateTimer = null;
+                            return;
+                        }
+                        
+                        this.secondsLeft--;
+                        
+                        if (this.secondsLeft <= 0) {
+                            // Reset timer and update
+                            clearInterval(this.updateTimer);
+                            this.updateTimer = null;
+                            
+                            // Fetch new data
+                            this.updateDiskSpace();
+                            this.updateStreamsStatus();
+                            
+                            // Start a new countdown cycle
+                            this.startUpdateCycle();
+                        }
+                    }, 1000);
+                }
+            },
+            mounted() {
+                // Start update cycle when component is mounted
+                this.startUpdateCycle();
+                
+                // Clear message after 5 seconds if present
+                if (this.message) {
+                    setTimeout(() => {
+                        this.message = "";
+                    }, 5000);
+                    
+                    // Also update the URL to remove the message
+                    const url = new URL(window.location);
+                    url.searchParams.delete('message');
+                    window.history.replaceState({}, '', url);
+                }
+            },
+            beforeUnmount() {
+                // Clean up timer when component is unmounted
+                if (this.updateTimer) {
+                    clearInterval(this.updateTimer);
+                }
+            }
+        });
+        
+        // Mount the app
+        app.mount('#app');
+    </script>
+</body>
+</html> 

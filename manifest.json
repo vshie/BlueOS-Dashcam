@@ -1,0 +1,10 @@
+{
+    "name": "Video Recorder",
+    "version": "1.0.0",
+    "description": "Records video streams when vehicle is armed",
+    "author": "Your Name",
+    "main": "index.html",
+    "dependencies": {
+        "mavlink2rest": ">=1.0.0"
+    }
+} 

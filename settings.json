@@ -1,0 +1,14 @@
+{
+    "streams": [
+        {
+            "name": "um",
+            "url": "rtsp://192.168.192.160:8555/input"
+        }
+    ],
+    "settings": {
+        "log_folder": "/Users/will/Downloads/",
+        "video_folder": "/Users/will/Documents/videos",
+        "minimum_free_space_mb": 1024,
+        "out_of_space_action": "stop"
+    }
+}
