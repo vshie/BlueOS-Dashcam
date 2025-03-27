@@ -1,2 +1,4 @@
+# WebSocket client/server implementation
 websockets==12.0
+# HTTP server and client for asyncio
 aiohttp==3.9.1 
