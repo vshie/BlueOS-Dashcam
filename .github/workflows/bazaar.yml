@@ -14,4 +14,4 @@ jobs:
         with:
           BCLOUD_PAT: ${{secrets.BCLOUD_PAT}}
           PLATFORMS: linux/arm/v7,linux/arm64,linux/amd64
-          EXTENSION: ac4a105-3b4b-4730-9910-73c170af2a8f
+          EXTENSION: 7ac4a105-3b4b-4730-9910-73c170af2a8f
