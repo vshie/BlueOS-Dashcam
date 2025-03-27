@@ -31,7 +31,9 @@ COPY . .
 # Set default environment variables
 ENV LOG_FOLDER=/home/blueos/logs
 ENV VIDEO_FOLDER=/home/blueos/videos
-ENV MAVLINK_URL=ws://blueos.internal:6040/mavlink/ws/mavlink?filter=HEARTBEAT
+ENV SETTINGS_FOLDER=/home/blueos/settings
+ENV MAVLINK_URL=ws://blueos.internal/mavlink2rest/ws/mavlink?filter=HEARTBEAT
+ENV PYTHONUNBUFFERED=1
 
 # Create necessary directories for storage
 RUN mkdir -p $LOG_FOLDER $VIDEO_FOLDER

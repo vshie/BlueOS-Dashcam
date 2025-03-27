@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Video Recorder</title>
-    <script src="/static/vue.js"></script>
+    <title>DashCam</title>
+    <script src="./static/vue.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -311,7 +311,7 @@
                             <strong>{{ stream.name }}</strong><br>
                             URL: {{ stream.url }}
                         </div>
-                        <form action="/delete_stream" method="post" style="margin: 0;">
+                        <form action="./delete_stream" method="post" style="margin: 0;">
                             <input type="hidden" name="stream_name" :value="stream.name">
                             <button type="submit" class="delete">Delete</button>
                         </form>
@@ -344,7 +344,7 @@
                     </div>
                 </div>
                 
-                <form action="/update_settings" method="post">
+                <form action="./update_settings" method="post">
                     <h3>Update Settings</h3>
                     <div class="form-grid">
                         <div>
@@ -365,7 +365,7 @@
                     </div>
                 </form>
                 
-                <form action="/delete_oldest" method="post" style="margin-top: 20px;">
+                <form action="./delete_oldest" method="post" style="margin-top: 20px;">
                     <button type="submit" class="delete">Delete Oldest Video Now</button>
                 </form>
             </div>
@@ -376,7 +376,7 @@
             <div class="modal-content">
                 <span class="close" @click="closeModal">&times;</span>
                 <h3>Add/Edit Stream</h3>
-                <form action="/add_stream" method="post">
+                <form action="./add_stream" method="post">
                     <label for="stream_name">Stream Name:</label>
                     <input type="text" id="stream_name" name="stream_name" required>
                     
@@ -499,7 +499,7 @@
                 updateDiskSpace() {
                     if (this.isModalOpen) return;
                     
-                    fetch('/disk_space')
+                    fetch('./disk_space')
                         .then(response => response.json())
                         .then(data => {
                             console.log('Disk space data:', data);
@@ -512,7 +512,7 @@
                 updateStreamsStatus() {
                     if (this.isModalOpen) return;
                     
-                    fetch('/stream_status')
+                    fetch('./stream_status')
                         .then(response => response.json())
                         .then(data => {
                             this.isArmed = data.is_armed;

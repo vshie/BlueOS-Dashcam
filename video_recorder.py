@@ -10,12 +10,26 @@ import subprocess
 from aiohttp import web
 import argparse
 import sys
+import logging
 
 class VideoRecorder:
+    SETTINGS_PATH = "/home/blueos/settings/dashcam.json"
+    
     def __init__(self, log_folder: str, video_folder: str, mavlink_url: str):
+        # Setup logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            force=True,
+            stream=sys.stdout  # Ensure logs go to stdout for Docker
+        )
+        self.logger = logging.getLogger("dashcam")
+        
         self.settings = self.load_settings()
         self.settings["settings"]["log_folder"] = log_folder
         self.settings["settings"]["video_folder"] = video_folder
+        self.logger.info(f"Settings path: {self.SETTINGS_PATH}")
+        self.logger.info(f"Settings: {self.settings}")
         self.mavlink_url = mavlink_url
         self.recording_processes: Dict[str, subprocess.Popen] = {}
         self.is_armed = False
@@ -24,10 +38,12 @@ class VideoRecorder:
         self.setup_routes()
 
     def load_settings(self) -> dict:
-        settings_path = Path("settings.json")
+        settings_path = Path(self.SETTINGS_PATH)
         if settings_path.exists():
             with open(settings_path) as f:
                 return json.load(f)
+        # Create settings directory if it doesn't exist
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
         return {
             "streams": [],
             "settings": {
@@ -39,10 +55,10 @@ class VideoRecorder:
         }
 
     def save_settings(self):
-        settings_path = Path("settings.json")
+        settings_path = Path(self.SETTINGS_PATH)
         with open(settings_path, 'w') as f:
             json.dump(self.settings, f, indent=4)
-        print("Settings saved.")
+        self.logger.info("Settings saved.")
 
     def setup_routes(self):
         self.app.router.add_get('/', self.handle_index)
@@ -52,12 +68,13 @@ class VideoRecorder:
         self.app.router.add_post('/delete_oldest', self.handle_delete_oldest)
         self.app.router.add_get('/disk_space', self.handle_disk_space)
         self.app.router.add_get('/stream_status', self.handle_stream_status)
+        self.app.router.add_get('/register_service', self.handle_register_service)
         
         # Create static directory if it doesn't exist
         static_dir = Path('static')
         if not static_dir.exists():
             static_dir.mkdir(exist_ok=True)
-            print(f"Created static directory at {static_dir.absolute()}")
+            self.logger.info(f"Created static directory at {static_dir.absolute()}")
             
         self.app.router.add_static('/static', str(static_dir))
 
@@ -134,7 +151,7 @@ class VideoRecorder:
         try:
             video_folder = Path(self.settings["settings"]["video_folder"])
             if not video_folder.exists():
-                print(f"Warning: Video folder {video_folder} doesn't exist. Creating it.")
+                self.logger.warning(f"Warning: Video folder {video_folder} doesn't exist. Creating it.")
                 video_folder.mkdir(parents=True, exist_ok=True)
                 
             usage = shutil.disk_usage(video_folder)
@@ -154,7 +171,7 @@ class VideoRecorder:
             return web.json_response(response_data)
             
         except Exception as e:
-            print(f"Error getting disk space: {e}")
+            self.logger.error(f"Error getting disk space: {e}")
             return web.json_response({
                 'freeBytes': 0,
                 'totalBytes': 0,
@@ -170,6 +187,18 @@ class VideoRecorder:
             'active_recordings': list(self.recording_processes.keys()),
             'streams_configured': len(self.settings["streams"]),
             'timestamp': datetime.now().isoformat()
+        })
+
+    async def handle_register_service(self, request):
+        """Handle BlueOS service registration"""
+        return web.json_response({
+            'name': 'Dashcam',
+            'description': 'Video recording service for BlueOS',
+            'icon': 'mdi-video',
+            'company': 'Blue Robotics',
+            'version': '1.0.0',
+            'webpage': 'https://github.com/bluerobotics/BlueOS-Dashcam',
+            'api': '/v1.0/docs'
         })
 
     async def handle_index(self, request):
@@ -197,11 +226,11 @@ class VideoRecorder:
                     content_type="text/html"
                 )
             except Exception as e:
-                print(f"Error rendering template: {e}")
+                self.logger.error(f"Error rendering template: {e}")
                 # Fall back to simplified response if template can't be rendered
                 return self.create_simple_response()
         else:
-            print(f"Template file not found at {template_path.absolute()}")
+            self.logger.warning(f"Template file not found at {template_path.absolute()}")
             return self.create_simple_response()
 
     def create_simple_response(self):
@@ -316,7 +345,7 @@ class VideoRecorder:
     def get_latest_bin_file(self) -> Optional[str]:
         """Get the latest .bin file from the log folder"""
         log_folder = Path(self.settings["settings"]["log_folder"])
-        bin_files = list(log_folder.glob("*.bin"))
+        bin_files = list(log_folder.glob("*.BIN"))
         if not bin_files:
             return None
         return max(bin_files, key=lambda x: x.stat().st_mtime).stem
@@ -339,15 +368,15 @@ class VideoRecorder:
             str(output_path)
         ]
 
-        print(f"Starting recording for {stream['name']} to {output_path}")
-        print(f"FFmpeg command: {' '.join(cmd)}")  # Print the command for debugging
+        self.logger.info(f"Starting recording for {stream['name']} to {output_path}")
+        self.logger.info(f"FFmpeg command: {' '.join(cmd)}")  # Print the command for debugging
         process = subprocess.Popen(cmd)
         self.recording_processes[stream["name"]] = process
 
     def stop_recording(self, stream_name: str):
         """Stop recording a single stream"""
         if stream_name in self.recording_processes:
-            print(f"Stopping recording for {stream_name}")
+            self.logger.info(f"Stopping recording for {stream_name}")
             process = self.recording_processes[stream_name]
             process.terminate()
             process.wait()
@@ -368,19 +397,17 @@ class VideoRecorder:
         video_files = list(video_folder.glob("*.mp4"))
         if video_files:
             oldest_video = min(video_files, key=lambda x: x.stat().st_mtime)
-            print(f"Deleting oldest video: {oldest_video}")
+            self.logger.info(f"Deleting oldest video: {oldest_video}")
             oldest_video.unlink()
             return str(oldest_video.name)
         return None
 
     async def process_heartbeat(self, message: dict):
         """Process MAVLink heartbeat message"""
-        # print(f"Received message: {json.dumps(message, indent=2)}")
-        
         # Skip messages that aren't HEARTBEAT
         if message.get("message", {}).get("type") != "HEARTBEAT":
             return
-            
+        
         # Skip messages from non-autopilot components (e.g. onboard controllers, cameras)
         # Valid autopilots have non-zero values different from MAV_AUTOPILOT_INVALID
         autopilot_type = message.get("message", {}).get("autopilot", {}).get("type")
@@ -390,9 +417,9 @@ class VideoRecorder:
             "MAV_AUTOPILOT_PX4"
         ]
         if autopilot_type not in valid_autopilots:
-            #print(f"Ignoring message from non-autopilot component: {autopilot_type}")
+            self.logger.debug(f"Ignoring message from non-autopilot component: {autopilot_type}")
             return
-            
+        
         # Skip messages from non-vehicle types (like cameras, gimbals, etc.)
         mavtype = message.get("message", {}).get("mavtype", {}).get("type")
         vehicle_types = [
@@ -404,34 +431,34 @@ class VideoRecorder:
             "MAV_TYPE_VTOL"
         ]
         if mavtype not in vehicle_types:
-            print(f"Ignoring message from non-vehicle component: {mavtype}")
+            self.logger.warning(f"Ignoring message from non-vehicle component: {mavtype}")
             return
 
         # Extract base_mode from the message
         base_mode = message.get("message", {}).get("base_mode", {}).get("bits", 0)
-        #print(f"Base mode bits: {base_mode}")
+        self.logger.debug(f"Base mode bits: {base_mode}")
         
         # Check if the vehicle is armed (bit 7 is set)
         is_armed = bool(base_mode & 0x80)
-        # print(f"Vehicle armed: {is_armed}")
+        self.logger.debug(f"Vehicle armed: {is_armed}")
         
         if is_armed and not self.is_armed:
             # Vehicle just armed
-            print("Vehicle just armed, starting recordings...")
+            self.logger.info("Vehicle just armed, starting recordings...")
             self.is_armed = True
             base_filename = self.get_latest_bin_file()
             if base_filename:
-                print(f"Found latest bin file: {base_filename}")
+                self.logger.info(f"Found latest bin file: {base_filename}")
                 for stream in self.settings["streams"]:
                     if self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
                         self.handle_space_issue()
                     self.start_recording(stream, base_filename)
             else:
-                print("No .bin files found in log folder")
+                self.logger.info("No .bin files found in log folder")
         
         elif not is_armed and self.is_armed:
             # Vehicle just disarmed
-            print("Vehicle just disarmed, stopping recordings...")
+            self.logger.info("Vehicle just disarmed, stopping recordings...")
             self.is_armed = False
             for stream_name in list(self.recording_processes.keys()):
                 self.stop_recording(stream_name)
@@ -440,18 +467,20 @@ class VideoRecorder:
         """Connect to MAVLink2Rest websocket"""
         while True:
             try:
-                print(f"Connecting to WebSocket at {self.mavlink_url}")
+                self.logger.info(f"Connecting to WebSocket at {self.mavlink_url}")
                 async with websockets.connect(self.mavlink_url) as websocket:
                     self.ws = websocket
-                    print("WebSocket connected successfully")
+                    self.logger.info("WebSocket connected successfully")
                     async for message in websocket:
                         await self.process_heartbeat(json.loads(message))
             except Exception as e:
-                print(f"WebSocket error: {e}")
+                self.logger.error(f"WebSocket error: {e}")
                 await asyncio.sleep(1)  # Wait before reconnecting
 
     async def run(self):
         """Main run loop"""
+        self.logger.info(f"Starting Dashcam service...")
+        self.logger.info(f"Settings path: {self.SETTINGS_PATH}")
         # Create necessary directories
         os.makedirs(self.settings["settings"]["log_folder"], exist_ok=True)
         os.makedirs(self.settings["settings"]["video_folder"], exist_ok=True)
@@ -467,7 +496,7 @@ class VideoRecorder:
                 self.connect_websocket()
             )
         except KeyboardInterrupt:
-            print("Shutting down gracefully...")
+            self.logger.info("Shutting down gracefully...")
             # Stop all active recordings
             for stream_name in list(self.recording_processes.keys()):
                 self.stop_recording(stream_name)
@@ -481,17 +510,26 @@ async def main():
                        help='WebSocket URL for MAVLink2Rest connection')
     args = parser.parse_args()
 
+    # Setup logging at the start of main
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        force=True,
+        stream=sys.stdout
+    )
+    logger = logging.getLogger("dashcam")
+
     # Ensure directories exist
     for directory in [args.log_folder, args.video_folder]:
         if not os.path.exists(directory):
-            print(f"Creating directory: {directory}")
+            logger.info(f"Creating directory: {directory}")
             os.makedirs(directory, exist_ok=True)
 
     recorder = VideoRecorder(args.log_folder, args.video_folder, args.mavlink_url)
     try:
         await recorder.run()
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         return 1
     return 0
 
