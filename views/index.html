@@ -353,6 +353,11 @@
                                    :value="settings.minimum_free_space_mb" required>
                         </div>
                         <div>
+                            <label for="segment_duration">Segment Duration (seconds):</label>
+                            <input type="number" id="segment_duration" name="segment_duration" 
+                                   :value="settings.segment_duration" required min="60" max="3600">
+                        </div>
+                        <div>
                             <label for="out_of_space_action">Out of Space Action:</label>
                             <select id="out_of_space_action" name="out_of_space_action" :value="settings.out_of_space_action">
                                 <option value="stop">Stop Recording</option>
@@ -430,7 +435,8 @@
                         log_folder: initialData.settings.log_folder,
                         video_folder: initialData.settings.video_folder,
                         minimum_free_space_mb: initialData.settings.minimum_free_space_mb,
-                        out_of_space_action: initialData.settings.out_of_space_action || 'stop'
+                        out_of_space_action: initialData.settings.out_of_space_action || 'stop',
+                        segment_duration: initialData.settings.segment_duration || 300
                     },
                     
                     // Disk space info

@@ -50,7 +50,8 @@ class VideoRecorder:
                 "log_folder": "/home/blueos/logs",
                 "video_folder": "/home/blueos/videos",
                 "minimum_free_space_mb": 1024,
-                "out_of_space_action": "stop"
+                "out_of_space_action": "stop",
+                "segment_duration": 300  # 5 minutes in seconds
             }
         }
 
@@ -84,6 +85,7 @@ class VideoRecorder:
         # Update settings
         self.settings["settings"]["minimum_free_space_mb"] = int(data.get("minimum_free_space_mb", 1024))
         self.settings["settings"]["out_of_space_action"] = data.get("out_of_space_action", "stop")
+        self.settings["settings"]["segment_duration"] = int(data.get("segment_duration", 300))
         
         # Save settings to file
         self.save_settings()
@@ -352,19 +354,27 @@ class VideoRecorder:
 
     def start_recording(self, stream: dict, base_filename: str):
         """Start recording a single stream"""
-        # Use %03d as a placeholder for segment numbers (000, 001, etc.)
-        output_file = f"{base_filename}_{stream['name']}_%03d.mp4"
+        # Create a filename pattern with timestamp (%Y%m%d-%H%M%S)
+        output_file = f"{base_filename}_{stream['name']}_%Y%m%d-%H%M%S.mp4"
         output_path = Path(self.settings["settings"]["video_folder"]) / output_file
+        segment_duration = self.settings["settings"].get("segment_duration", 300)
 
-        # FFmpeg command with 1GB chunk size
+        # FFmpeg command with segment splitting and timestamp correction
         cmd = [
-            "ffmpeg", "-i", stream["url"],
+            "ffmpeg",
+            "-use_wallclock_as_timestamps", "1",  # Use system clock for timestamps
+            "-buffer_size", "64M",  # Larger buffer size for 4K streams (32MB)
+            "-ss", "0",
+            "-reorder_queue_size", "5000",
+            "-analyzeduration", "10000000",
+            "-max_delay", "5000000",  # Increase max delay to 5 seconds
+            "-i", stream["url"],
             "-c:v", "copy",  # Only copy video stream
             "-an",  # Disable audio
             "-f", "segment",
-            "-segment_time", "3600",  # 1 hour segments
+            "-segment_time", str(segment_duration),  # Use configured duration
             "-segment_format", "mp4",
-            "-reset_timestamps", "1",
+            "-strftime", "1",  # Enable timestamp in filenames
             str(output_path)
         ]
 
