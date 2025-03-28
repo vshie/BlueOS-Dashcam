@@ -11,6 +11,8 @@ from aiohttp import web
 import argparse
 import sys
 import logging
+import time
+import signal
 
 class VideoRecorder:
     SETTINGS_PATH = "/home/blueos/settings/dashcam.json"
@@ -305,14 +307,6 @@ class VideoRecorder:
         active_recordings_html = ""
         if self.recording_processes:
             for stream in self.recording_processes.keys():
-                active_recordings_html += f'<div class="item">{stream}</div>'
-        else:
-            active_recordings_html = '<div class="item">No active recordings</div>'
-        
-        # Build streams HTML
-        streams_html = ""
-        if self.settings["streams"]:
-            for stream in self.settings["streams"]:
                 streams_html += f'<div class="item"><strong>{stream["name"]}</strong><br>URL: {stream["url"]}'
                 streams_html += f'<form action="/delete_stream" method="post" style="display:inline; float:right">'
                 streams_html += f'<input type="hidden" name="stream_name" value="{stream["name"]}">'
@@ -353,33 +347,44 @@ class VideoRecorder:
         return max(bin_files, key=lambda x: x.stat().st_mtime).stem
 
     def start_recording(self, stream: dict, base_filename: str):
-        """Start recording a single stream"""
-        # Create a filename pattern with timestamp (%Y%m%d-%H%M%S)
-        output_file = f"{base_filename}_{stream['name']}_%Y%m%d-%H%M%S.mp4"
-        output_path = Path(self.settings["settings"]["video_folder"]) / output_file
-        segment_duration = self.settings["settings"].get("segment_duration", 300)
-
-        # FFmpeg command with segment splitting and timestamp correction
+        """Start recording a single stream using GStreamer"""
+        # Create a base filename for splitmuxsink
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        base_output = f"{base_filename}_{stream['name']}_{timestamp}"
+        output_dir = Path(self.settings["settings"]["video_folder"])
+        output_pattern = str(output_dir / f"{base_output}_%02d.mp4")
+        
+        # Build the GStreamer pipeline command
         cmd = [
-            "ffmpeg",
-            "-use_wallclock_as_timestamps", "1",  # Use system clock for timestamps
-            "-buffer_size", "64M",  # Larger buffer size for 4K streams (32MB)
-            "-ss", "0",
-            "-reorder_queue_size", "5000",
-            "-analyzeduration", "10000000",
-            "-max_delay", "5000000",  # Increase max delay to 5 seconds
-            "-i", stream["url"],
-            "-c:v", "copy",  # Only copy video stream
-            "-an",  # Disable audio
-            "-f", "segment",
-            "-segment_time", str(segment_duration),  # Use configured duration
-            "-segment_format", "mp4",
-            "-strftime", "1",  # Enable timestamp in filenames
-            str(output_path)
+            "gst-launch-1.0",
+            "-e",  # Handle EOS gracefully
+            "rtspsrc",
+            f"location={stream['url']}",
+            "protocols=tcp",
+            "!",
+            "application/x-rtp, media=video, encoding-name=H264",
+            "!",
+            "queue",
+            "max-size-buffers=0",
+            "max-size-time=0",
+            "max-size-bytes=0",
+            "!",
+            "rtph264depay",
+            "!",
+            "h264parse",
+            "!",
+            "splitmuxsink",
+            f"location={output_pattern}",
+            "max-size-time=0",
+            f"max-size-bytes={500 * 1024 * 1024}",  # 500 MB in bytes
+            "muxer-factory=mp4mux",
+            "muxer=mp4mux faststart=true fragment-duration=1000",
+            "async-finalize=false"  # Ensure files are finalized synchronously
         ]
 
-        self.logger.info(f"Starting recording for {stream['name']} to {output_path}")
-        self.logger.info(f"FFmpeg command: {' '.join(cmd)}")  # Print the command for debugging
+        self.logger.info(f"Starting recording for {stream['name']} to {output_pattern}")
+        self.logger.info(f"GStreamer command: {' '.join(cmd)}")  # Print the command for debugging
+        
         process = subprocess.Popen(cmd)
         self.recording_processes[stream["name"]] = process
 
@@ -388,8 +393,19 @@ class VideoRecorder:
         if stream_name in self.recording_processes:
             self.logger.info(f"Stopping recording for {stream_name}")
             process = self.recording_processes[stream_name]
-            process.terminate()
-            process.wait()
+            
+            # Send SIGINT instead of SIGTERM for a more graceful shutdown
+            # SIGINT allows GStreamer to handle EOS and finalize the file properly
+            process.send_signal(signal.SIGINT)
+            
+            # Give GStreamer some time to properly finalize the file
+            try:
+                process.wait(timeout=5)  # Wait up to 5 seconds for proper shutdown
+            except subprocess.TimeoutExpired:
+                self.logger.warning(f"GStreamer process for {stream_name} did not exit gracefully, forcing termination")
+                process.terminate()
+                process.wait()
+                
             del self.recording_processes[stream_name]
 
     def handle_space_issue(self):

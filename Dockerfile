@@ -1,29 +1,16 @@
-FROM python:3.11-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+FROM bluerobotics/blueos-base:latest
 
 # Set working directory
 WORKDIR /app
-
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
-
-# Install Python dependencies - temporarily install gcc for building dependencies
-RUN apt-get update && apt-get install -y gcc && \
-    pip install --no-cache-dir -r requirements.txt && \
-    apt-get purge -y gcc && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories
 RUN mkdir -p static views
 
 # Download Vue.js into static directory (using a specific version to ensure stability)
 RUN curl -s https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js -o static/vue.js
+
+RUN apt update && apt install -y gcc
+RUN python -m pip install websockets aiohttp
 
 # Copy the rest of the application
 COPY . .
