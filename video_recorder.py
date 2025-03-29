@@ -13,11 +13,10 @@ import sys
 import logging
 import time
 import signal
+import aiohttp
 
 class VideoRecorder:
-    SETTINGS_PATH = "/home/blueos/settings/dashcam.json"
-    
-    def __init__(self, log_folder: str, video_folder: str, mavlink_url: str):
+    def __init__(self, log_folder: str, video_folder: str, mavlink_url: str, settings_path: str = "/home/blueos/settings/dashcam.json"):
         # Setup logging
         logging.basicConfig(
             level=logging.INFO,
@@ -27,10 +26,11 @@ class VideoRecorder:
         )
         self.logger = logging.getLogger("dashcam")
         
+        self.settings_path = settings_path
         self.settings = self.load_settings()
         self.settings["settings"]["log_folder"] = log_folder
         self.settings["settings"]["video_folder"] = video_folder
-        self.logger.info(f"Settings path: {self.SETTINGS_PATH}")
+        self.logger.info(f"Settings path: {self.settings_path}")
         self.logger.info(f"Settings: {self.settings}")
         self.mavlink_url = mavlink_url
         self.recording_processes: Dict[str, subprocess.Popen] = {}
@@ -40,7 +40,7 @@ class VideoRecorder:
         self.setup_routes()
 
     def load_settings(self) -> dict:
-        settings_path = Path(self.SETTINGS_PATH)
+        settings_path = Path(self.settings_path)
         if settings_path.exists():
             with open(settings_path) as f:
                 return json.load(f)
@@ -58,7 +58,7 @@ class VideoRecorder:
         }
 
     def save_settings(self):
-        settings_path = Path(self.SETTINGS_PATH)
+        settings_path = Path(self.settings_path)
         with open(settings_path, 'w') as f:
             json.dump(self.settings, f, indent=4)
         self.logger.info("Settings saved.")
@@ -66,87 +66,79 @@ class VideoRecorder:
     def setup_routes(self):
         self.app.router.add_get('/', self.handle_index)
         self.app.router.add_post('/update_settings', self.handle_update_settings)
-        self.app.router.add_post('/add_stream', self.handle_add_stream)
-        self.app.router.add_post('/delete_stream', self.handle_delete_stream)
         self.app.router.add_post('/delete_oldest', self.handle_delete_oldest)
-        self.app.router.add_get('/disk_space', self.handle_disk_space)
-        self.app.router.add_get('/stream_status', self.handle_stream_status)
+        self.app.router.add_get('/api/settings', self.handle_settings_api)
+        self.app.router.add_post('/api/settings', self.handle_settings_update)
+        self.app.router.add_get('/api/status', self.handle_status_api)
         self.app.router.add_get('/register_service', self.handle_register_service)
         
         # Create static directory if it doesn't exist
         static_dir = Path('static')
-        if not static_dir.exists():
-            static_dir.mkdir(exist_ok=True)
-            self.logger.info(f"Created static directory at {static_dir.absolute()}")
-            
         self.app.router.add_static('/static', str(static_dir))
+
+    async def fetch_camera_streams(self) -> List[dict]:
+        """Fetch available streams from MAVLink camera manager"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://{self.mavlink_url.split('://')[1].split('/')[0]}/mavlink-camera-manager/streams") as response:
+                    if response.status == 200:
+                        streams = await response.json()
+                        return [
+                            {
+                                "name": stream["video_and_stream"]["name"],
+                                "url": stream["video_and_stream"]["stream_information"]["endpoints"][0],
+                                "enabled": True
+                            }
+                            for stream in streams
+                        ]
+                    else:
+                        self.logger.error(f"Failed to fetch streams: {response.status}")
+                        return []
+        except Exception as e:
+            self.logger.error(f"Error fetching streams: {e}")
+            return []
+
+    async def update_streams_from_camera_manager(self):
+        """Update settings with streams from camera manager"""
+        camera_streams = await self.fetch_camera_streams()
+        
+        # Update existing streams and add new ones
+        existing_names = {stream["name"] for stream in self.settings["streams"]}
+        
+        for stream in camera_streams:
+            if stream["name"] not in existing_names:
+                self.settings["streams"].append(stream)
+                self.logger.info(f"Added new stream: {stream['name']}")
+            else:
+                # Update URL of existing stream but preserve enabled state
+                for existing_stream in self.settings["streams"]:
+                    if existing_stream["name"] == stream["name"]:
+                        existing_stream["url"] = stream["url"]
+                        break
+        
+        self.save_settings()
 
     async def handle_update_settings(self, request):
         data = await request.post()
-        
-        # Update settings
-        self.settings["settings"]["minimum_free_space_mb"] = int(data.get("minimum_free_space_mb", 1024))
-        self.settings["settings"]["out_of_space_action"] = data.get("out_of_space_action", "stop")
-        self.settings["settings"]["segment_duration"] = int(data.get("segment_duration", 300))
-        
-        # Save settings to file
+        # data should always be the full settings object
+        self.settings = data
         self.save_settings()
-        
-        # Redirect back to main page
-        return web.Response(status=302, headers={'Location': '/'})
-
-    async def handle_add_stream(self, request):
-        data = await request.post()
-        stream_name = data.get("stream_name")
-        stream_url = data.get("stream_url")
-        
-        if stream_name and stream_url:
-            # Check if stream with this name already exists
-            for stream in self.settings["streams"]:
-                if stream["name"] == stream_name:
-                    # Update existing stream
-                    stream["url"] = stream_url
-                    break
-            else:
-                # Add new stream
-                self.settings["streams"].append({
-                    "name": stream_name,
-                    "url": stream_url
-                })
-            
-            # Save settings to file
-            self.save_settings()
-        
-        # Redirect back to main page
-        return web.Response(status=302, headers={'Location': '/'})
-
-    async def handle_delete_stream(self, request):
-        data = await request.post()
-        stream_name = data.get("stream_name")
-        
-        if stream_name:
-            # Stop recording if active
-            if stream_name in self.recording_processes:
-                self.stop_recording(stream_name)
-            
-            # Remove stream from settings
-            self.settings["streams"] = [s for s in self.settings["streams"] if s["name"] != stream_name]
-            
-            # Save settings to file
-            self.save_settings()
         
         # Redirect back to main page
         return web.Response(status=302, headers={'Location': '/'})
 
     async def handle_delete_oldest(self, request):
         """Manually trigger deletion of oldest video file"""
-        deleted = self.delete_oldest_video()
-        
-        if deleted:
-            message = f"Deleted oldest video: {deleted}"
+        video_folder = Path(self.settings["settings"]["video_folder"])
+        video_files = list(video_folder.glob("*.mp4"))
+        message = ""
+        if video_files:
+            oldest_video = min(video_files, key=lambda x: x.stat().st_mtime)
+            self.logger.info(f"Deleting oldest video: {oldest_video}")
+            oldest_video.unlink()
+            message = f"deleted oldest video: {oldest_video}"
         else:
-            message = "No videos to delete"
-        
+            message = "no videos to delete"
         # Redirect back to main page
         return web.Response(status=302, headers={'Location': f'/?message={message}'})
 
@@ -197,7 +189,7 @@ class VideoRecorder:
         """Handle BlueOS service registration"""
         return web.json_response({
             'name': 'Dashcam',
-            'description': 'Video recording service for BlueOS',
+            'description': 'Video recording extension for BlueOS',
             'icon': 'mdi-video',
             'company': 'Blue Robotics',
             'version': '1.0.0',
@@ -205,132 +197,59 @@ class VideoRecorder:
             'api': '/v1.0/docs'
         })
 
-    async def handle_index(self, request):
-        # Create a simple HTML response if template file doesn't exist
-        template_path = Path("views/index.html")
-        if template_path.exists():
-            try:
-                with open(template_path, "r") as file:
-                    template_content = file.read()
+    async def handle_dashcam_data(self, request):
+        """Return all dashcam data as JSON"""
+        # Check disk space
+        try:
+            video_folder = Path(self.settings["settings"]["video_folder"])
+            if not video_folder.exists():
+                video_folder.mkdir(parents=True, exist_ok=True)
                 
-                # Prepare initial data for frontend
-                initial_data = {
-                    "is_armed": self.is_armed,
-                    "active_recordings": list(self.recording_processes.keys()),
-                    "streams": self.settings["streams"],
-                    "settings": self.settings["settings"]
-                }
-                
-                # Convert to JSON and pass to template
-                import json
-                template_content = template_content.replace('{{ initial_data|safe }}', json.dumps(initial_data))
-                
-                return web.Response(
-                    text=template_content,
-                    content_type="text/html"
-                )
-            except Exception as e:
-                self.logger.error(f"Error rendering template: {e}")
-                # Fall back to simplified response if template can't be rendered
-                return self.create_simple_response()
-        else:
-            self.logger.warning(f"Template file not found at {template_path.absolute()}")
-            return self.create_simple_response()
+            usage = shutil.disk_usage(video_folder)
+            free_bytes = usage.free
+            total_bytes = usage.total
+            free_mb = free_bytes // (1024 * 1024)
+            
+            disk_space = {
+                'freeBytes': free_bytes,
+                'totalBytes': total_bytes,
+                'freeMb': free_mb,
+                'minimumFreeMb': self.settings["settings"]["minimum_free_space_mb"]
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting disk space: {e}")
+            disk_space = {
+                'freeBytes': 0,
+                'totalBytes': 0,
+                'freeMb': 0,
+                'minimumFreeMb': self.settings["settings"]["minimum_free_space_mb"],
+                'error': str(e)
+            }
+        
+        # Compile all data
+        response_data = {
+            'is_armed': self.is_armed,
+            'active_recordings': list(self.recording_processes.keys()),
+            'streams': self.settings["streams"],
+            'settings': self.settings["settings"],
+            'disk_space': disk_space,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return web.json_response(response_data)
 
-    def create_simple_response(self):
-        """Create a simple HTML response if template file doesn't exist"""
-        html = """
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <title>Video Recorder</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 20px; }
-                    h1 { color: #333; }
-                    .status { padding: 10px; border-radius: 5px; margin: 10px 0; }
-                    .armed { background-color: #e6ffe6; border: 1px solid #4CAF50; }
-                    .disarmed { background-color: #ffe6e6; border: 1px solid #F44336; }
-                    .section { background-color: #f2f2f2; padding: 15px; margin: 15px 0; border-radius: 5px; }
-                    .item { background-color: white; padding: 10px; margin: 5px 0; border-radius: 3px; }
-                    button { background-color: #4CAF50; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 3px; }
-                    button.delete { background-color: #F44336; }
-                </style>
-            </head>
-            <body>
-                <h1>Video Recorder</h1>
-                <div class="status {0}">
-                    Vehicle Status: <strong>{1}</strong>
-                </div>
-                <div class="section">
-                    <h2>Active Recordings</h2>
-                    {2}
-                </div>
-                <div class="section">
-                    <h2>Streams Configuration</h2>
-                    {3}
-                    <form action="/add_stream" method="post">
-                        <h3>Add Stream</h3>
-                        <p>Stream Name: <input type="text" name="stream_name" required></p>
-                        <p>Stream URL: <input type="text" name="stream_url" required></p>
-                        <button type="submit">Save Stream</button>
-                    </form>
-                </div>
-                <div class="section">
-                    <h2>Settings</h2>
-                    <p>Log Folder: {4}</p>
-                    <p>Video Folder: {5}</p>
-                    <p>Minimum Free Space: {6} MB</p>
-                    <form action="/update_settings" method="post">
-                        <h3>Update Settings</h3>
-                        <p>Minimum Free Space (MB): <input type="number" name="minimum_free_space_mb" value="{6}" required></p>
-                        <p>
-                            Out of Space Action: 
-                            <select name="out_of_space_action">
-                                <option value="stop" {7}>Stop Recording</option>
-                                <option value="delete_oldest_video" {8}>Delete Oldest Video</option>
-                            </select>
-                        </p>
-                        <button type="submit">Save Settings</button>
-                    </form>
-                    <form action="/delete_oldest" method="post" style="margin-top: 20px;">
-                        <button type="submit" class="delete">Delete Oldest Video Now</button>
-                    </form>
-                </div>
-            </body>
-        </html>
-        """
+    async def handle_index(self, request):
+        # Update streams from camera manager before serving the page
+        await self.update_streams_from_camera_manager()
         
-        armed_status = "armed" if self.is_armed else "disarmed"
-        armed_text = "ARMED" if self.is_armed else "DISARMED"
-        
-        # Build active recordings HTML
-        active_recordings_html = ""
-        if self.recording_processes:
-            for stream in self.recording_processes.keys():
-                streams_html += f'<div class="item"><strong>{stream["name"]}</strong><br>URL: {stream["url"]}'
-                streams_html += f'<form action="/delete_stream" method="post" style="display:inline; float:right">'
-                streams_html += f'<input type="hidden" name="stream_name" value="{stream["name"]}">'
-                streams_html += f'<button type="submit" class="delete">Delete</button></form></div>'
-        else:
-            streams_html = '<div class="item">No streams configured</div>'
-        
-        # Selected state for dropdown
-        stop_selected = 'selected' if self.settings["settings"]["out_of_space_action"] == "stop" else ''
-        delete_selected = 'selected' if self.settings["settings"]["out_of_space_action"] == "delete_oldest_video" else ''
+        # Simply serve the HTML template without embedded data
+        template_path = Path("views/index.html")
+        with open(template_path, "r") as file:
+            template_content = file.read()
         
         return web.Response(
-            text=html.format(
-                armed_status,
-                armed_text,
-                active_recordings_html,
-                streams_html,
-                self.settings["settings"]["log_folder"],
-                self.settings["settings"]["video_folder"],
-                self.settings["settings"]["minimum_free_space_mb"],
-                stop_selected,
-                delete_selected
-            ),
-            content_type='text/html'
+            text=template_content,
+            content_type="text/html"
         )
 
     def get_free_space_mb(self) -> int:
@@ -413,17 +332,6 @@ class VideoRecorder:
         elif action == "delete_oldest_video":
             self.delete_oldest_video()
 
-    def delete_oldest_video(self) -> Optional[str]:
-        """Delete the oldest video file and return its name or None if no videos exist"""
-        video_folder = Path(self.settings["settings"]["video_folder"])
-        video_files = list(video_folder.glob("*.mp4"))
-        if video_files:
-            oldest_video = min(video_files, key=lambda x: x.stat().st_mtime)
-            self.logger.info(f"Deleting oldest video: {oldest_video}")
-            oldest_video.unlink()
-            return str(oldest_video.name)
-        return None
-
     async def process_heartbeat(self, message: dict):
         """Process MAVLink heartbeat message"""
         # Skip messages that aren't HEARTBEAT
@@ -472,9 +380,13 @@ class VideoRecorder:
             if base_filename:
                 self.logger.info(f"Found latest bin file: {base_filename}")
                 for stream in self.settings["streams"]:
-                    if self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
-                        self.handle_space_issue()
-                    self.start_recording(stream, base_filename)
+                    # Only record enabled streams
+                    if stream.get("enabled", False):
+                        if self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
+                            self.handle_space_issue()
+                        self.start_recording(stream, base_filename)
+                    else:
+                        self.logger.info(f"Skipping disabled stream: {stream['name']}")
             else:
                 self.logger.info("No .bin files found in log folder")
         
@@ -502,7 +414,7 @@ class VideoRecorder:
     async def run(self):
         """Main run loop"""
         self.logger.info(f"Starting Dashcam service...")
-        self.logger.info(f"Settings path: {self.SETTINGS_PATH}")
+        self.logger.info(f"Settings path: {self.settings_path}")
         # Create necessary directories
         os.makedirs(self.settings["settings"]["log_folder"], exist_ok=True)
         os.makedirs(self.settings["settings"]["video_folder"], exist_ok=True)
@@ -524,12 +436,138 @@ class VideoRecorder:
                 self.stop_recording(stream_name)
             await runner.cleanup()
 
+    async def handle_status_api(self, request):
+        """Return current system status as JSON"""
+        # Get disk space info
+        try:
+            video_folder = Path(self.settings["settings"]["video_folder"])
+            if not video_folder.exists():
+                video_folder.mkdir(parents=True, exist_ok=True)
+                
+            usage = shutil.disk_usage(video_folder)
+            free_bytes = usage.free
+            total_bytes = usage.total
+            free_mb = free_bytes // (1024 * 1024)
+            
+            disk_space = {
+                'freeBytes': free_bytes,
+                'totalBytes': total_bytes,
+                'freeMb': free_mb
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting disk space: {e}")
+            disk_space = {
+                'freeBytes': 0,
+                'totalBytes': 0,
+                'freeMb': 0,
+                'error': str(e)
+            }
+        
+        # Compile and return status information
+        response_data = {
+            # System paths (read-only)
+            'paths': {
+                'log_folder': self.settings["settings"]["log_folder"],
+                'video_folder': self.settings["settings"]["video_folder"]
+            },
+            # Vehicle and recording status
+            'vehicle': {
+                'is_armed': self.is_armed
+            },
+            'recordings': {
+                'active': list(self.recording_processes.keys())
+            },
+            # Current disk space
+            'disk_space': disk_space,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return web.json_response(response_data)
+
+    async def handle_settings_api(self, request):
+        """Return current settings as JSON"""
+        # Update streams from camera manager before responding
+        await self.update_streams_from_camera_manager()
+        
+        # Format settings to match the expected structure
+        response_data = {
+            'general': {
+                'minimum_free_space_mb': self.settings["settings"]["minimum_free_space_mb"],
+                'out_of_space_action': self.settings["settings"]["out_of_space_action"],
+                'segment_duration': self.settings["settings"]["segment_duration"]
+            },
+            'streams': self.settings["streams"]
+        }
+        
+        return web.json_response(response_data)
+
+    async def handle_settings_update(self, request):
+        """Update settings from API request"""
+        try:
+            # Get JSON data from request
+            data = await request.json()
+            
+            # Basic validation
+            if not isinstance(data, dict):
+                return web.json_response({
+                    "success": False,
+                    "message": "Invalid request format: body must be a JSON object"
+                }, status=400)
+            
+            # Update general settings
+            if "general" in data and isinstance(data["general"], dict):
+                for key, value in data["general"].items():
+                    # Skip read-only settings
+                    if key not in ["log_folder", "video_folder"]:
+                        self.settings["settings"][key] = value
+            
+            # Update streams
+            if "streams" in data and isinstance(data["streams"], list):
+                # Get current active recordings to check if we need to stop any
+                current_stream_names = {stream["name"] for stream in self.settings["streams"]}
+                new_stream_names = {stream["name"] for stream in data["streams"] if "name" in stream}
+                
+                # Stop recordings for streams that are being removed
+                for stream_name in current_stream_names - new_stream_names:
+                    if stream_name in self.recording_processes:
+                        self.stop_recording(stream_name)
+                
+                # Replace the entire streams array
+                self.settings["streams"] = data["streams"]
+                
+                # Ensure all streams have an enabled field
+                for stream in self.settings["streams"]:
+                    if "enabled" not in stream:
+                        stream["enabled"] = True
+            
+            # Save settings to file
+            self.save_settings()
+            
+            return web.json_response({
+                "success": True,
+                "message": "Settings updated successfully"
+            })
+            
+        except json.JSONDecodeError:
+            return web.json_response({
+                "success": False,
+                "message": "Invalid JSON data"
+            }, status=400)
+        except Exception as e:
+            self.logger.error(f"Error updating settings: {e}")
+            return web.json_response({
+                "success": False,
+                "message": f"Error updating settings: {str(e)}"
+            }, status=500)
+
 async def main():
     parser = argparse.ArgumentParser(description='Video Recorder for BlueOS')
     parser.add_argument('--log-folder', required=True, help='Path to the log folder containing .bin files')
     parser.add_argument('--video-folder', required=True, help='Path to store video recordings')
-    parser.add_argument('--mavlink-url', default='ws://blueos.internal:6040/mavlink/ws/mavlink?filter=HEARTBEAT',
-                       help='WebSocket URL for MAVLink2Rest connection')
+    parser.add_argument('--blueos-address', default='blueos.internal',
+                       help='Address of the BlueOS system')
+    parser.add_argument('--settings-path', default='/home/blueos/settings/dashcam.json',
+                       help='Path to the settings JSON file')
     args = parser.parse_args()
 
     # Setup logging at the start of main
@@ -547,7 +585,10 @@ async def main():
             logger.info(f"Creating directory: {directory}")
             os.makedirs(directory, exist_ok=True)
 
-    recorder = VideoRecorder(args.log_folder, args.video_folder, args.mavlink_url)
+    # Construct MAVLink URL from blueos address
+    mavlink_url = f"ws://{args.blueos_address}/mavlink2rest/ws/mavlink?filter=HEARTBEAT"
+
+    recorder = VideoRecorder(args.log_folder, args.video_folder, mavlink_url, args.settings_path)
     try:
         await recorder.run()
     except Exception as e:
