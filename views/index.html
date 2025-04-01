@@ -91,29 +91,41 @@
                     </div>
                 </div>
                 
-                <form @submit.prevent="saveSettings" id="settings-form">
-                    <h3>Update Settings</h3>
-                    <div class="settings-form-grid">
-                        <div class="setting-form-item">
-                            <label for="minimum_free_space_mb">Minimum Free Space (MB):</label>
-                            <input type="number" id="minimum_free_space_mb" v-model.number="settings.minimum_free_space_mb" required>
-                        </div>
-                        <div class="setting-form-item">
-                            <label for="segment_size">Segment Size (MB):</label>
-                            <input type="number" id="segment_size" v-model.number="settings.segment_size" required min="100" max="2000">
-                        </div>
-                        <div class="setting-form-item">
-                            <label for="out_of_space_action">Out of Space Action:</label>
-                            <select id="out_of_space_action" v-model="settings.out_of_space_action">
-                                <option value="stop">Stop Recording</option>
-                                <option value="delete_oldest_video">Delete Oldest Video</option>
-                            </select>
-                        </div>
-                        <div class="setting-form-item button-container">
-                            <button type="submit" class="save-button">Save Settings</button>
-                        </div>
+                <div class="settings-form-grid">
+                    <div class="setting-form-item">
+                        <label for="minimum_free_space_mb">Minimum Free Space (MB):</label>
+                        <input type="number" 
+                               id="minimum_free_space_mb" 
+                               v-model.number="settings.minimum_free_space_mb" 
+                               required
+                               @focus="focusedFields.minimum_free_space_mb = true"
+                               @blur="focusedFields.minimum_free_space_mb = false">
                     </div>
-                </form>
+                    <div class="setting-form-item">
+                        <label for="segment_size">Segment Size (MB):</label>
+                        <input type="number" 
+                               id="segment_size" 
+                               v-model.number="settings.segment_size" 
+                               required 
+                               min="100" 
+                               max="2000"
+                               @focus="focusedFields.segment_size = true"
+                               @blur="focusedFields.segment_size = false">
+                    </div>
+                    <div class="setting-form-item">
+                        <label for="out_of_space_action">Out of Space Action:</label>
+                        <select id="out_of_space_action" 
+                                v-model="settings.out_of_space_action"
+                                @focus="focusedFields.out_of_space_action = true"
+                                @blur="focusedFields.out_of_space_action = false">
+                            <option value="stop">Stop Recording</option>
+                            <option value="delete_oldest_video">Delete Oldest Video</option>
+                        </select>
+                    </div>
+                    <div class="setting-form-item button-container">
+                        <button @click="saveSettings" class="save-button">Save Settings</button>
+                    </div>
+                </div>
                 
                 <div class="delete-oldest-container">
                     <button @click="deleteOldestVideo" class="delete">Delete Oldest Video Now</button>
@@ -126,15 +138,15 @@
             <div class="modal-content">
                 <span class="close" @click="closeModal">&times;</span>
                 <h3 class="modal-title">Add/Edit Stream</h3>
-                <form @submit.prevent="addStream" class="modal-form">
+                <div class="modal-form">
                     <label for="newStreamName">Stream Name:</label>
                     <input type="text" id="newStreamName" v-model="newStream.name" required>
                     
                     <label for="newStreamUrl">Stream URL:</label>
                     <input type="text" id="newStreamUrl" v-model="newStream.url" required placeholder="rtsp://example.com/stream1">
                     
-                    <button type="submit">Save Stream</button>
-                </form>
+                    <button @click="addStream">Save Stream</button>
+                </div>
             </div>
         </div>
     </div>
@@ -180,12 +192,18 @@
                         segment_size: 500
                     },
                     
+                    // Track which fields are in focus
+                    focusedFields: {
+                        minimum_free_space_mb: false,
+                        out_of_space_action: false,
+                        segment_size: false
+                    },
+                    
                     // Disk space info
                     diskSpace: {
                         freeBytes: 0,
                         totalBytes: 0,
-                        freeMb: 0,
-                        minimumFreeMb: 1024
+                        freeMb: 0
                     },
                     
                     // UI state
@@ -300,11 +318,6 @@
                     
                     this.isLoading = true;
                     
-                    // Keep track of form fields that user might be editing
-                    const currentMinimumFreeMb = this.settings.minimum_free_space_mb;
-                    const currentOutOfSpaceAction = this.settings.out_of_space_action;
-                    const currentSegmentSize = this.settings.segment_size;
-                    
                     // Fetch status and settings in parallel
                     Promise.all([
                         fetch('./api/status').then(response => {
@@ -336,12 +349,18 @@
                                 minimumFreeMb: minimumFreeMb
                             };
                             
-                            // Update settings but preserve values the user might be editing
+                            // Update settings but preserve values of fields that are in focus
                             this.settings = {
                                 ...statusData.paths,
-                                minimum_free_space_mb: currentMinimumFreeMb, // Preserve user input
-                                out_of_space_action: currentOutOfSpaceAction, // Preserve user input
-                                segment_size: currentSegmentSize, // Preserve user input
+                                minimum_free_space_mb: this.focusedFields.minimum_free_space_mb ? 
+                                    this.settings.minimum_free_space_mb : 
+                                    settingsData.general.minimum_free_space_mb,
+                                out_of_space_action: this.focusedFields.out_of_space_action ? 
+                                    this.settings.out_of_space_action : 
+                                    settingsData.general.out_of_space_action,
+                                segment_size: this.focusedFields.segment_size ? 
+                                    this.settings.segment_size : 
+                                    settingsData.general.segment_size
                             };
                             
                             // Update streams
