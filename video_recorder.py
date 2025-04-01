@@ -14,6 +14,7 @@ import logging
 import time
 import signal
 import aiohttp
+import re
 
 class VideoRecorder:
     def __init__(self, log_folder: str, video_folder: str, mavlink_url: str, settings_path: str = "/home/blueos/settings/dashcam.json"):
@@ -265,11 +266,32 @@ class VideoRecorder:
             return None
         return max(bin_files, key=lambda x: x.stat().st_mtime).stem
 
+    def sanitize_filename(self, name: str) -> str:
+        """Sanitize a string to be safe for use in filenames"""
+        # Replace problematic characters with underscores
+        # Unsafe characters: / \ : * ? " < > | and whitespace
+        unsafe_chars = r'[\\/*?:"<>|\s]'
+        sanitized = re.sub(unsafe_chars, '_', name)
+
+        # Remove leading/trailing whitespace and periods
+        sanitized = sanitized.strip('. ')
+
+        # Ensure we return something if the name is empty after sanitization
+        if not sanitized:
+            sanitized = "unnamed_stream"
+
+        self.logger.debug(f"Sanitized stream name '{name}' to '{sanitized}'")
+        return sanitized
+
     def start_recording(self, stream: dict, base_filename: str):
         """Start recording a single stream using GStreamer"""
         # Create a base filename for splitmuxsink
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        base_output = f"{base_filename}_{stream['name']}_{timestamp}"
+
+        # Sanitize the stream name for safe use in filenames
+        sanitized_stream_name = self.sanitize_filename(stream['name'])
+
+        base_output = f"{base_filename}_{sanitized_stream_name}_{timestamp}"
         output_dir = Path(self.settings["settings"]["video_folder"])
         output_pattern = str(output_dir / f"{base_output}_%02d.mp4")
         
