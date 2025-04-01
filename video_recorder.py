@@ -54,7 +54,7 @@ class VideoRecorder:
                 "video_folder": "/home/blueos/videos",
                 "minimum_free_space_mb": 1024,
                 "out_of_space_action": "stop",
-                "segment_duration": 300  # 5 minutes in seconds
+                "segment_size": 500  # Size in MB for video segments
             }
         }
 
@@ -294,7 +294,11 @@ class VideoRecorder:
         base_output = f"{base_filename}_{sanitized_stream_name}_{timestamp}"
         output_dir = Path(self.settings["settings"]["video_folder"])
         output_pattern = str(output_dir / f"{base_output}_%02d.mp4")
-        
+
+        # Get segment size from settings, with fallback to 500 MB if not set
+        segment_size_mb = self.settings["settings"].get("segment_size", 500)
+        segment_size_bytes = segment_size_mb * 1024 * 1024
+
         # Build the GStreamer pipeline command
         cmd = [
             "gst-launch-1.0",
@@ -313,15 +317,16 @@ class VideoRecorder:
             "splitmuxsink",
             f"location={output_pattern}",
             "max-size-time=0",
-            f"max-size-bytes={500 * 1024 * 1024}",  # 500 MB in bytes
+            f"max-size-bytes={segment_size_bytes}",  # Use the segment size from settings
             "muxer-factory=mp4mux",
             "muxer=mp4mux faststart=true fragment-duration=1000",
             "async-finalize=false"  # Ensure files are finalized synchronously
         ]
 
         self.logger.info(f"Starting recording for {stream['name']} to {output_pattern}")
+        self.logger.info(f"Segment size: {segment_size_mb} MB ({segment_size_bytes} bytes)")
         self.logger.info(f"GStreamer command: {' '.join(cmd)}")  # Print the command for debugging
-        
+
         process = subprocess.Popen(cmd)
         self.recording_processes[stream["name"]] = process
 
@@ -503,24 +508,24 @@ class VideoRecorder:
             'disk_space': disk_space,
             'timestamp': datetime.now().isoformat()
         }
-        
+
         return web.json_response(response_data)
 
     async def handle_settings_api(self, request):
         """Return current settings as JSON"""
         # Update streams from camera manager before responding
         await self.update_streams_from_camera_manager()
-        
+
         # Format settings to match the expected structure
         response_data = {
             'general': {
                 'minimum_free_space_mb': self.settings["settings"]["minimum_free_space_mb"],
                 'out_of_space_action': self.settings["settings"]["out_of_space_action"],
-                'segment_duration': self.settings["settings"]["segment_duration"]
+                'segment_size': self.settings["settings"].get("segment_size", 500)
             },
             'streams': self.settings["streams"]
         }
-        
+
         return web.json_response(response_data)
 
     async def handle_settings_update(self, request):

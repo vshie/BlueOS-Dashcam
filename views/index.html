@@ -99,8 +99,8 @@
                             <input type="number" id="minimum_free_space_mb" v-model.number="settings.minimum_free_space_mb" required>
                         </div>
                         <div class="setting-form-item">
-                            <label for="segment_duration">Segment Duration (seconds):</label>
-                            <input type="number" id="segment_duration" v-model.number="settings.segment_duration" required min="60" max="3600">
+                            <label for="segment_size">Segment Size (MB):</label>
+                            <input type="number" id="segment_size" v-model.number="settings.segment_size" required min="100" max="2000">
                         </div>
                         <div class="setting-form-item">
                             <label for="out_of_space_action">Out of Space Action:</label>
@@ -177,7 +177,7 @@
                         video_folder: "",
                         minimum_free_space_mb: 1024,
                         out_of_space_action: 'stop',
-                        segment_duration: 300
+                        segment_size: 500
                     },
                     
                     // Disk space info
@@ -303,7 +303,7 @@
                     // Keep track of form fields that user might be editing
                     const currentMinimumFreeMb = this.settings.minimum_free_space_mb;
                     const currentOutOfSpaceAction = this.settings.out_of_space_action;
-                    const currentSegmentDuration = this.settings.segment_duration;
+                    const currentSegmentSize = this.settings.segment_size;
                     
                     // Fetch status and settings in parallel
                     Promise.all([
@@ -341,7 +341,7 @@
                                 ...statusData.paths,
                                 minimum_free_space_mb: currentMinimumFreeMb, // Preserve user input
                                 out_of_space_action: currentOutOfSpaceAction, // Preserve user input
-                                segment_duration: currentSegmentDuration, // Preserve user input
+                                segment_size: currentSegmentSize, // Preserve user input
                             };
                             
                             // Update streams
@@ -412,7 +412,7 @@
                         general: {
                             minimum_free_space_mb: this.settings.minimum_free_space_mb,
                             out_of_space_action: this.settings.out_of_space_action,
-                            segment_duration: this.settings.segment_duration
+                            segment_size: this.settings.segment_size
                         }
                     };
                     
