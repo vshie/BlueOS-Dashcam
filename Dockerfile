@@ -19,7 +19,7 @@ COPY . .
 ENV LOG_FOLDER=/home/blueos/logs
 ENV VIDEO_FOLDER=/home/blueos/videos
 ENV SETTINGS_FOLDER=/home/blueos/settings
-ENV MAVLINK_URL=ws://blueos.internal/mavlink2rest/ws/mavlink?filter=HEARTBEAT
+ENV BLUEOS_ADDRESS=blueos.internal
 ENV PYTHONUNBUFFERED=1
 
 # Create necessary directories for storage
@@ -29,4 +29,4 @@ RUN mkdir -p $LOG_FOLDER $VIDEO_FOLDER
 EXPOSE 8080
 
 # Run the application
-CMD ["sh", "-c", "python video_recorder.py --log-folder $LOG_FOLDER --video-folder $VIDEO_FOLDER --mavlink-url $MAVLINK_URL"] 
+CMD ["sh", "-c", "python video_recorder.py --log-folder $LOG_FOLDER --video-folder $VIDEO_FOLDER --blueos-address $BLUEOS_ADDRESS"] 
