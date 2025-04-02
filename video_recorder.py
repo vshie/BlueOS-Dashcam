@@ -90,7 +90,7 @@ class VideoRecorder:
                             if "rtsp" in url.lower():
                                 new_streams.append({
                                     "name": stream["video_and_stream"]["name"],
-                                    "url": url.replace("rtsp://", "rtsp://").replace("rtspt://", "rtsp://").replace("rtsph://", "rtsp://"),
+                                    "url": url.replace("rtspu://", "rtsp://").replace("rtspt://", "rtsp://").replace("rtsph://", "rtsp://"),
                                     "enabled": True
                                 })
                         return new_streams
