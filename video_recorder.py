@@ -308,7 +308,6 @@ class VideoRecorder:
             "-e",  # Handle EOS gracefully
             "rtspsrc",
             f"location={stream['url']}",
-            "protocols=tcp",
             "!",
             "queue",
             "max-size-buffers=0",
