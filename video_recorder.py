@@ -84,14 +84,17 @@ class VideoRecorder:
                 async with session.get(f"http://{self.mavlink_url.split('://')[1].split('/')[0]}/mavlink-camera-manager/streams") as response:
                     if response.status == 200:
                         streams = await response.json()
-                        return [
-                            {
-                                "name": stream["video_and_stream"]["name"],
-                                "url": stream["video_and_stream"]["stream_information"]["endpoints"][0],
-                                "enabled": True
-                            }
-                            for stream in streams
-                        ]
+                        new_streams = []
+                        for stream in streams:
+                            url = stream["video_and_stream"]["stream_information"]["endpoints"][0]
+                            if "rtsp" in url.lower():
+                                new_streams.append({
+                                    "name": stream["video_and_stream"]["name"],
+                                    "url": url.replace("rtsp://", "rtsp://").replace("rtspt://", "rtsp://").replace("rtsph://", "rtsp://"),
+                                    "enabled": True
+                                })
+                        return new_streams
+  
                     else:
                         self.logger.error(f"Failed to fetch streams: {response.status}")
                         return []
