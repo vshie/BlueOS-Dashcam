@@ -386,7 +386,8 @@ class VideoRecorder:
             "MAV_TYPE_QUADROTOR", 
             "MAV_TYPE_HELICOPTER", 
             "MAV_TYPE_GROUND_ROVER", 
-            "MAV_TYPE_SUBMARINE", 
+            "MAV_TYPE_SUBMARINE",
+            "MAV_TYPE_SURFACE_BOAT",
             "MAV_TYPE_VTOL"
         ]
         if mavtype not in vehicle_types:
