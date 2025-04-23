@@ -412,8 +412,12 @@ class VideoRecorder:
                 for stream in self.settings["streams"]:
                     # Only record enabled streams
                     if stream.get("enabled", False):
-                        if self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
-                            self.handle_space_issue()
+                        while self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
+                            try:
+                                self.handle_space_issue()
+                            except Exception as e:
+                                self.logger.error(f"Error handling space issue: {e}")
+                                break
                         self.start_recording(stream, base_filename)
                     else:
                         self.logger.info(f"Skipping disabled stream: {stream['name']}")
