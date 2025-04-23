@@ -53,7 +53,7 @@ class VideoRecorder:
                 "log_folder": "/home/blueos/logs",
                 "video_folder": "/home/blueos/videos",
                 "minimum_free_space_mb": 1024,
-                "out_of_space_action": "stop",
+                "out_of_space_action": "delete_oldest_video",
                 "segment_size": 500  # Size in MB for video segments
             }
         }
@@ -131,7 +131,7 @@ class VideoRecorder:
         # Redirect back to main page
         return web.Response(status=302, headers={'Location': '/'})
 
-    async def handle_delete_oldest(self, request):
+    async def handle_delete_oldest(self, request=None):
         """Manually trigger deletion of oldest video file"""
         video_folder = Path(self.settings["settings"]["video_folder"])
         video_files = list(video_folder.glob("*.mp4"))
@@ -352,14 +352,14 @@ class VideoRecorder:
                 
             del self.recording_processes[stream_name]
 
-    def handle_space_issue(self):
+    async def handle_space_issue(self):
         """Handle out of space situation"""
         action = self.settings["settings"]["out_of_space_action"]
         if action == "stop":
             for stream_name in list(self.recording_processes.keys()):
                 self.stop_recording(stream_name)
         elif action == "delete_oldest_video":
-            self.delete_oldest_video()
+            await self.handle_delete_oldest()
 
     async def process_heartbeat(self, message: dict):
         """Process MAVLink heartbeat message"""
@@ -412,13 +412,19 @@ class VideoRecorder:
                 for stream in self.settings["streams"]:
                     # Only record enabled streams
                     if stream.get("enabled", False):
+                        count = 0
                         while self.get_free_space_mb() < self.settings["settings"]["minimum_free_space_mb"]:
+                            count += 1
+                            if count > 10:
+                                self.logger.error("Failed to handle space issue!")
+                                break
                             try:
-                                self.handle_space_issue()
+                                await self.handle_space_issue()
                             except Exception as e:
                                 self.logger.error(f"Error handling space issue: {e}")
                                 break
-                        self.start_recording(stream, base_filename)
+                        if self.get_free_space_mb() >= self.settings["settings"]["minimum_free_space_mb"]:
+                            self.start_recording(stream, base_filename)
                     else:
                         self.logger.info(f"Skipping disabled stream: {stream['name']}")
             else:
