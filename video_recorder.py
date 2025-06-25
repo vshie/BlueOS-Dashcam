@@ -430,6 +430,7 @@ class VideoRecorder:
             self.is_armed = True
             base_filename = self.get_latest_bin_file()
             if not base_filename:
+                self.logger.info("No latest bin file found, using next video file")
                 base_filename = self.get_next_video_file()
             if base_filename:
                 self.logger.info(f"Found latest bin file: {base_filename}")
@@ -448,6 +449,7 @@ class VideoRecorder:
                                 self.logger.error(f"Error handling space issue: {e}")
                                 break
                         if self.get_free_space_mb() >= self.settings["settings"]["minimum_free_space_mb"]:
+                            self.logger.info(f"Starting recording for {stream['name']} with base filename: {base_filename}")
                             self.start_recording(stream, base_filename)
                     else:
                         self.logger.info(f"Skipping disabled stream: {stream['name']}")
