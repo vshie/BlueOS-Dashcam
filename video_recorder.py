@@ -269,7 +269,7 @@ class VideoRecorder:
             return None
         return max(bin_files, key=lambda x: x.stat().st_mtime).stem
 
-    def get_latest_video_file(self) -> Optional[str]:
+    def get_next_video_file(self) -> Optional[str]:
         """Get the highest numbered .mp4 file from the video folder"""
         video_folder = Path(self.settings["settings"]["video_folder"])
         video_files = list(video_folder.glob("*.mp4"))
@@ -289,7 +289,7 @@ class VideoRecorder:
                 except ValueError:
                     # Skip files where the part before underscore isn't a number
                     continue
-        return str(max_number) if max_number is not None else "0"
+        return str(max_number + 1) if max_number is not None else "0"
 
     def sanitize_filename(self, name: str) -> str:
         """Sanitize a string to be safe for use in filenames"""
@@ -430,7 +430,7 @@ class VideoRecorder:
             self.is_armed = True
             base_filename = self.get_latest_bin_file()
             if not base_filename:
-                base_filename = self.get_latest_video_file()
+                base_filename = self.get_next_video_file()
             if base_filename:
                 self.logger.info(f"Found latest bin file: {base_filename}")
                 for stream in self.settings["streams"]:
