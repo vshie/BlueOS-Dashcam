@@ -273,21 +273,19 @@ class VideoRecorder:
         """Get the highest numbered .mp4 file from the video folder"""
         video_folder = Path(self.settings["settings"]["video_folder"])
         video_files = list(video_folder.glob("*.mp4"))
-        if not video_files:
-            return None
-        
-        max_number = None
+        max_number = 0
         for video_file in video_files:
+            self.logger.debug(f"Checking file {video_file}")
             filename = video_file.stem
+            self.logger.debug(f"Filename: {filename}")
             # Extract number before first underscore
             if '_' in filename:
                 number_part = filename.split('_')[0]
                 try:
                     number = int(number_part)
-                    if max_number is None or number > max_number:
-                        max_number = number
-                except ValueError:
-                    # Skip files where the part before underscore isn't a number
+                    max_number = max(max_number, number)
+                except ValueError as e:
+                    self.logger.debug(f"Skipping file {filename} because {e}")
                     continue
         return str(max_number + 1) if max_number is not None else "0"
 
@@ -432,8 +430,8 @@ class VideoRecorder:
             if not base_filename:
                 self.logger.info("No latest bin file found, using next video file")
                 base_filename = self.get_next_video_file()
+            self.logger.info(f"base filename: {base_filename}")
             if base_filename:
-                self.logger.info(f"Found latest bin file: {base_filename}")
                 for stream in self.settings["streams"]:
                     # Only record enabled streams
                     if stream.get("enabled", False):
