@@ -90,7 +90,7 @@ class VideoRecorder:
                             if "rtsp" in url.lower():
                                 new_streams.append({
                                     "name": stream["video_and_stream"]["name"],
-                                    "url": url.replace("rtspu://", "rtsp://").replace("rtspt://", "rtsp://").replace("rtsph://", "rtsp://").replace("0.0.0.0", "127.0.0.1"),
+                                    "url": url.replace("rtspu://", "rtsp://").replace("rtspt://", "rtsp://").replace("rtsph://", "rtsp://").replace("0.0.0.0", "blueos.internal"),
                                     "enabled": True
                                 })
                         return new_streams
