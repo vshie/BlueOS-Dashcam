@@ -28,7 +28,7 @@ RUN mkdir -p $LOG_FOLDER $VIDEO_FOLDER
 # Expose the web interface port
 EXPOSE 8080
 
-LABEL version="1.0.6"
+LABEL version="1.0.7"
 LABEL permissions='\
 {"HostConfig":{"Binds":["/usr/blueos/extensions/dashcam/videos/:/home/blueos/videos/","/root/.config/blueos/ardupilot-manager/firmware/logs/:/home/blueos/logs/","/usr/blueos/extensions/dashcam/settings/:/home/blueos/settings/"],"CpuQuota":100000,"CpuPeriod":100000,"ExtraHosts":["blueos.internal:host-gateway"],"PortBindings":{"8080/tcp":[{"HostPort":""}]}}}'
 
