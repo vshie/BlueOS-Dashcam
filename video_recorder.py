@@ -19,11 +19,27 @@ import re
 class VideoRecorder:
     def __init__(self, log_folder: str, video_folder: str, mavlink_url: str, settings_path: str = "/home/blueos/settings/dashcam.json"):
         # Setup logging
+        # Create logs directory if it doesn't exist
+        log_dir = Path(video_folder).parent / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "dashcam.log"
+        
+        # Create file handler for logging to file
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        
+        # Create console handler for stdout
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        
+        # Configure root logger
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             force=True,
-            stream=sys.stdout  # Ensure logs go to stdout for Docker
+            handlers=[file_handler, console_handler]
         )
         self.logger = logging.getLogger("dashcam")
         
@@ -349,8 +365,40 @@ class VideoRecorder:
         self.logger.info(f"Segment size: {segment_size_mb} MB ({segment_size_bytes} bytes)")
         self.logger.info(f"GStreamer command: {' '.join(cmd)}")  # Print the command for debugging
 
-        process = subprocess.Popen(cmd)
+        # Start subprocess with stdout and stderr capture
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            universal_newlines=True,
+            bufsize=1  # Line buffered
+        )
+        
+        # Store process and start output monitoring task
         self.recording_processes[stream["name"]] = process
+        
+        # Start monitoring subprocess output asynchronously
+        asyncio.create_task(self._monitor_subprocess_output(stream["name"], process))
+
+    async def _monitor_subprocess_output(self, stream_name: str, process: subprocess.Popen):
+        """Monitor subprocess output and log it"""
+        try:
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                # Log the GStreamer output with stream name prefix
+                line = line.strip()
+                if line:  # Only log non-empty lines
+                    self.logger.info(f"[{stream_name}] {line}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error monitoring output for {stream_name}: {e}")
+        finally:
+            # Ensure process is cleaned up
+            if stream_name in self.recording_processes:
+                del self.recording_processes[stream_name]
 
     def stop_recording(self, stream_name: str):
         """Stop recording a single stream"""
@@ -369,8 +417,12 @@ class VideoRecorder:
                 self.logger.warning(f"GStreamer process for {stream_name} did not exit gracefully, forcing termination")
                 process.terminate()
                 process.wait()
+            
+            # Close stdout to signal the monitoring task to stop
+            if process.stdout:
+                process.stdout.close()
                 
-            del self.recording_processes[stream_name]
+            # The monitoring task will clean up the process from recording_processes
 
     async def handle_space_issue(self):
         """Handle out of space situation"""
@@ -635,11 +687,27 @@ async def main():
     args = parser.parse_args()
 
     # Setup logging at the start of main
+    # Create logs directory if it doesn't exist
+    log_dir = Path(args.video_folder).parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "dashcam.log"
+    
+    # Create file handler for logging to file
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    # Create console handler for stdout
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    # Configure root logger
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         force=True,
-        stream=sys.stdout
+        handlers=[file_handler, console_handler]
     )
     logger = logging.getLogger("dashcam")
 
