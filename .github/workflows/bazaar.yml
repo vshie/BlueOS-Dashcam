@@ -1,17 +1,22 @@
-name: Build and deploy extension to Bazaar
+
+name: Deploy BlueOS Extension Image
+
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - '*.*.*'
+  pull_request:
+  # Run manually
+  workflow_dispatch:
+  # NOTE: caches may be removed if not run weekly
+  #  -> may be worth scheduling for every 6 days
 
 jobs:
-  build:
+  deploy-docker-image:
     runs-on: ubuntu-latest
     steps:
-      - name: Build and Publish Extension in BlueOS CLoud
-        uses: bluerobotics/blueos-cloud-action@0.0.1
+      - name: Deploy BlueOS Extension
+        uses: BlueOS-community/Deploy-BlueOS-Extension@v1.2.0
         with:
-          BCLOUD_PAT: ${{secrets.BCLOUD_PAT}}
-          PLATFORMS: linux/arm/v7,linux/arm64,linux/amd64
-          EXTENSION: 7ac4a105-3b4b-4730-9910-73c170af2a8f
+          docker-username: ${{ secrets.DOCKER_USERNAME }}
+          docker-password: ${{ secrets.DOCKER_PASSWORD }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          image-name: 'dashcam'
