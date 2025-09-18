@@ -338,19 +338,25 @@ class VideoRecorder:
         segment_size_mb = self.settings["settings"].get("segment_size", 500)
         segment_size_bytes = segment_size_mb * 1024 * 1024
 
-        # Build the GStreamer pipeline command
+        # Build the GStreamer pipeline command with better error handling
         cmd = [
             "gst-launch-1.0",
             "-e",  # Handle EOS gracefully
             "rtspsrc",
             f"location={stream['url']}",
+            "latency=0",  # Reduce latency
+            "buffer-mode=1",  # Slave mode for better sync
             "!",
             "queue",
             "max-size-buffers=0",
             "max-size-time=0",
             "max-size-bytes=0",
             "!",
-            "parsebin",  # Replace specific parsers with parsebin
+            "parsebin",  # Auto-detect and parse streams
+            "!",
+            "videoconvert",  # Ensure proper color space conversion
+            "!",
+            "videoscale",  # Handle resolution changes
             "!",
             "splitmuxsink",
             f"location={output_pattern}",
