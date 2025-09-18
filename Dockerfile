@@ -20,15 +20,11 @@ RUN apt update && apt install -y \
     gstreamer1.0-libav \
     libgstreamer1.0-0 \
     libgstreamer-plugins-base1.0-0 \
-    libgstreamer-plugins-good1.0-0 \
-    libgstreamer-plugins-bad1.0-0 \
-    libgstreamer-plugins-ugly1.0-0 \
     libgraphene-1.0-0 \
     libegl1-mesa \
     libegl1-mesa-dev \
     libgles2-mesa \
     libgles2-mesa-dev \
-    libgl1-mesa \
     libgl1-mesa-dev \
     libglu1-mesa \
     libglu1-mesa-dev \
