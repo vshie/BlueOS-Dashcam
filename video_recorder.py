@@ -339,6 +339,7 @@ class VideoRecorder:
         segment_size_bytes = segment_size_mb * 1024 * 1024
 
         # Build the GStreamer pipeline command optimized for ARM
+        # Use a simpler, more robust pipeline that works better with various RTSP sources
         cmd = [
             "gst-launch-1.0",
             "-e",  # Handle EOS gracefully
@@ -357,11 +358,7 @@ class VideoRecorder:
             "max-size-time=2000000000",  # 2 second buffer for UDP
             "max-size-bytes=20000000",  # 20MB buffer for UDP
             "!",
-            "rtph264depay",  # Explicitly depayload H.264
-            "!",
-            "h264parse",  # Parse H.264 stream
-            "!",
-            "avdec_h264",  # Decode H.264 to raw video
+            "decodebin",  # Use decodebin instead of explicit elements for better compatibility
             "!",
             "videoconvert",  # Ensure proper color space conversion
             "!",
@@ -382,8 +379,27 @@ class VideoRecorder:
         ]
 
         self.logger.info(f"Starting recording for {stream['name']} to {output_pattern}")
+        self.logger.info(f"Stream URL: {stream['url']}")
         self.logger.info(f"Segment size: {segment_size_mb} MB ({segment_size_bytes} bytes)")
         self.logger.info(f"GStreamer command: {' '.join(cmd)}")  # Print the command for debugging
+        
+        # Test RTSP connection first
+        self.logger.info(f"Testing RTSP connection to {stream['url']}...")
+        test_cmd = [
+            "gst-discoverer-1.0",
+            "--timeout=10",
+            stream['url']
+        ]
+        try:
+            test_result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=15)
+            if test_result.returncode == 0:
+                self.logger.info(f"RTSP stream discovery successful: {test_result.stdout.strip()}")
+            else:
+                self.logger.warning(f"RTSP stream discovery failed: {test_result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            self.logger.warning("RTSP stream discovery timed out")
+        except Exception as e:
+            self.logger.warning(f"RTSP stream discovery error: {e}")
 
         # Start subprocess with stdout and stderr capture
         process = subprocess.Popen(
