@@ -348,8 +348,9 @@ class VideoRecorder:
             "latency=0",  # Small latency for better sync
             "!",
             "queue",
-            "max-size-buffers=100",  # Reasonable buffer size
-            "max-size-time=1000000000",  # 1 second buffer
+            "max-size-buffers=200",  # Larger buffer for H.265
+            "max-size-time=2000000000",  # 2 second buffer for H.265
+            "max-size-bytes=20000000",  # 20MB buffer for H.265
             "!",
             "decodebin",  # Auto-detect and decode H.264/H.265 streams
             "!",
