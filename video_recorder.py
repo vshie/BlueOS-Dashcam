@@ -338,27 +338,20 @@ class VideoRecorder:
         segment_size_mb = self.settings["settings"].get("segment_size", 500)
         segment_size_bytes = segment_size_mb * 1024 * 1024
 
-        # Build the GStreamer pipeline command optimized for ARM
-        # Use a simpler, more robust pipeline that works better with various RTSP sources
+        # Build the GStreamer pipeline command - based on original stable branch approach
+        # Keep it simple and let GStreamer handle protocol detection
         cmd = [
             "gst-launch-1.0",
             "-e",  # Handle EOS gracefully
             "rtspsrc",
             f"location={stream['url']}",
-            "latency=0",  # No latency for UDP
-            "buffer-mode=0",  # Auto mode for UDP
-            "protocols=udp",  # Force UDP for IP cameras
-            "retry=3",  # Retry connection attempts
-            "timeout=5000000000",  # 5 second timeout
-            "udp-reconnect=1",  # Reconnect on UDP errors
-            "udp-reconnect-interval=1000000000",  # 1 second reconnect interval
+            "latency=0",  # Small latency for better sync
             "!",
             "queue",
-            "max-size-buffers=200",  # Larger buffer for UDP
-            "max-size-time=2000000000",  # 2 second buffer for UDP
-            "max-size-bytes=20000000",  # 20MB buffer for UDP
+            "max-size-buffers=100",  # Reasonable buffer size
+            "max-size-time=1000000000",  # 1 second buffer
             "!",
-            "decodebin",  # Use decodebin instead of explicit elements for better compatibility
+            "parsebin",  # Use original parsebin approach
             "!",
             "videoconvert",  # Ensure proper color space conversion
             "!",
@@ -367,9 +360,6 @@ class VideoRecorder:
             "x264enc",  # Use software encoder for ARM compatibility
             "bitrate=2000",  # Set reasonable bitrate for ARM
             "speed-preset=ultrafast",  # Optimize for ARM performance
-            "tune=zerolatency",  # Optimize for real-time
-            "!",
-            "h264parse",  # Parse encoded H.264
             "!",
             "mp4mux",  # Direct mp4 muxing
             "faststart=true",
