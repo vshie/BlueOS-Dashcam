@@ -32,6 +32,23 @@ RUN apt update && apt install -y \
 
 RUN python -m pip install websockets aiohttp
 
+# Remove problematic GStreamer plugins that cause version conflicts
+RUN rm -rf /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcodec.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstopengl.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstqsv.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstvalidatetracer.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstrtspclientsink.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstunixfd.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstdsd.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstaja.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgsttensordecoders.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstuvcgadget.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstanalyticsoverlay.so \
+           /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/validate/ \
+           /usr/local/lib/aarch64-linux-gnu/libgstrtspserver-1.0.so.0 \
+           /usr/local/lib/aarch64-linux-gnu/libgstanalytics-1.0.so.0 \
+           /usr/local/lib/aarch64-linux-gnu/libgstvalidate-1.0.so.0 || true
+
 # Copy the rest of the application
 COPY . .
 
@@ -43,10 +60,12 @@ ENV BLUEOS_ADDRESS=blueos.internal
 ENV PYTHONUNBUFFERED=1
 
 # GStreamer environment variables for ARM
-ENV GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/arm-linux-gnueabihf/gstreamer-1.0:/usr/local/lib/aarch64-linux-gnu/gstreamer-1.0
+ENV GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/arm-linux-gnueabihf/gstreamer-1.0
 ENV GST_REGISTRY_FORK=no
 ENV GST_DEBUG=1
-ENV LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf:/usr/local/lib/aarch64-linux-gnu
+ENV LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib/arm-linux-gnueabihf
+# Disable problematic plugins that cause version conflicts
+ENV GST_PLUGIN_SYSTEM_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/arm-linux-gnueabihf/gstreamer-1.0
 
 # Create necessary directories for storage
 RUN mkdir -p $LOG_FOLDER $VIDEO_FOLDER

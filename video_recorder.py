@@ -344,15 +344,24 @@ class VideoRecorder:
             "-e",  # Handle EOS gracefully
             "rtspsrc",
             f"location={stream['url']}",
-            "latency=0",  # Reduce latency
-            "buffer-mode=1",  # Slave mode for better sync
+            "latency=0",  # No latency for UDP
+            "buffer-mode=0",  # Auto mode for UDP
+            "protocols=udp",  # Force UDP for IP cameras
+            "retry=3",  # Retry connection attempts
+            "timeout=5000000000",  # 5 second timeout
+            "udp-reconnect=1",  # Reconnect on UDP errors
+            "udp-reconnect-interval=1000000000",  # 1 second reconnect interval
             "!",
             "queue",
-            "max-size-buffers=0",
-            "max-size-time=0",
-            "max-size-bytes=0",
+            "max-size-buffers=200",  # Larger buffer for UDP
+            "max-size-time=2000000000",  # 2 second buffer for UDP
+            "max-size-bytes=20000000",  # 20MB buffer for UDP
             "!",
-            "parsebin",  # Auto-detect and parse streams
+            "rtph264depay",  # Explicitly depayload H.264
+            "!",
+            "h264parse",  # Parse H.264 stream
+            "!",
+            "avdec_h264",  # Decode H.264 to raw video
             "!",
             "videoconvert",  # Ensure proper color space conversion
             "!",
@@ -361,6 +370,9 @@ class VideoRecorder:
             "x264enc",  # Use software encoder for ARM compatibility
             "bitrate=2000",  # Set reasonable bitrate for ARM
             "speed-preset=ultrafast",  # Optimize for ARM performance
+            "tune=zerolatency",  # Optimize for real-time
+            "!",
+            "h264parse",  # Parse encoded H.264
             "!",
             "mp4mux",  # Direct mp4 muxing
             "faststart=true",
@@ -387,6 +399,39 @@ class VideoRecorder:
         
         # Start monitoring subprocess output asynchronously
         asyncio.create_task(self._monitor_subprocess_output(stream["name"], process))
+        
+        # Start a task to check if the file is actually being written
+        asyncio.create_task(self._verify_recording_start(stream["name"], output_pattern.replace('_%02d', '')))
+
+    async def _verify_recording_start(self, stream_name: str, output_file: str):
+        """Verify that recording has actually started and is writing data"""
+        try:
+            # Wait a bit for the file to be created
+            await asyncio.sleep(3)
+            
+            output_path = Path(output_file)
+            max_checks = 10  # Check for up to 30 seconds
+            
+            for i in range(max_checks):
+                if output_path.exists():
+                    file_size = output_path.stat().st_size
+                    if file_size > 0:
+                        self.logger.info(f"[{stream_name}] Recording verified: {output_file} ({file_size} bytes)")
+                        return
+                    else:
+                        self.logger.warning(f"[{stream_name}] File exists but is empty: {output_file}")
+                else:
+                    self.logger.warning(f"[{stream_name}] Output file not created yet: {output_file}")
+                
+                await asyncio.sleep(3)
+            
+            # If we get here, recording didn't start properly
+            self.logger.error(f"[{stream_name}] Recording failed to start properly after 30 seconds")
+            if stream_name in self.recording_processes:
+                self.stop_recording(stream_name)
+                
+        except Exception as e:
+            self.logger.error(f"Error verifying recording start for {stream_name}: {e}")
 
     async def _monitor_subprocess_output(self, stream_name: str, process: subprocess.Popen):
         """Monitor subprocess output and log it"""
