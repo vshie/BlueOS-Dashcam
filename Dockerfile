@@ -10,7 +10,7 @@ RUN mkdir -p static views
 RUN curl -s https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js -o static/vue.js
 
 # Install essential GStreamer packages for ARM with H.265 support
-RUN apt update && apt install -y \
+RUN apt update && apt install -y --no-install-recommends \
     gcc \
     gstreamer1.0-tools \
     gstreamer1.0-plugins-base \
@@ -28,9 +28,12 @@ RUN apt update && apt install -y \
     libgl1-mesa-dev \
     libglu1-mesa \
     libglu1-mesa-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
-RUN python -m pip install websockets aiohttp
+RUN python -m pip install --no-cache-dir websockets aiohttp
 
 # Remove problematic GStreamer plugins that cause version conflicts
 RUN rm -rf /usr/local/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvcodec.so \
