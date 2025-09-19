@@ -338,8 +338,8 @@ class VideoRecorder:
         segment_size_mb = self.settings["settings"].get("segment_size", 500)
         segment_size_bytes = segment_size_mb * 1024 * 1024
 
-        # Build the GStreamer pipeline command - use explicit RTP depayloader
-        # The discovery shows H.264 streams, so we need to handle RTP properly
+        # Build the GStreamer pipeline command - handle both H.264 and H.265 streams
+        # Use decodebin to automatically handle different codecs
         cmd = [
             "gst-launch-1.0",
             "-e",  # Handle EOS gracefully
@@ -351,11 +351,7 @@ class VideoRecorder:
             "max-size-buffers=100",  # Reasonable buffer size
             "max-size-time=1000000000",  # 1 second buffer
             "!",
-            "rtph264depay",  # Explicitly depayload H.264 RTP
-            "!",
-            "h264parse",  # Parse H.264 stream
-            "!",
-            "avdec_h264",  # Decode H.264 to raw video
+            "decodebin",  # Auto-detect and decode H.264/H.265 streams
             "!",
             "videoconvert",  # Ensure proper color space conversion
             "!",

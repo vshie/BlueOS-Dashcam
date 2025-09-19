@@ -9,7 +9,7 @@ RUN mkdir -p static views
 # Download Vue.js into static directory (using a specific version to ensure stability)
 RUN curl -s https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js -o static/vue.js
 
-# Install essential GStreamer packages for ARM
+# Install essential GStreamer packages for ARM with H.265 support
 RUN apt update && apt install -y \
     gcc \
     gstreamer1.0-tools \
@@ -18,6 +18,7 @@ RUN apt update && apt install -y \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-plugins-ugly \
     gstreamer1.0-libav \
+    gstreamer1.0-plugins-rs \
     libgstreamer1.0-0 \
     libgstreamer-plugins-base1.0-0 \
     libgraphene-1.0-0 \
@@ -75,7 +76,7 @@ EXPOSE 8080
 
 LABEL version="1.0.7"
 LABEL permissions='\
-{"HostConfig":{"Binds":["/usr/blueos/extensions/dashcam/videos/:/home/blueos/videos/","/root/.config/blueos/ardupilot-manager/firmware/logs/:/home/blueos/logs/","/usr/blueos/extensions/dashcam/settings/:/home/blueos/settings/"],"CpuQuota":100000,"CpuPeriod":100000,"ExtraHosts":["blueos.internal:host-gateway"],"PortBindings":{"8080/tcp":[{"HostPort":""}]}}}'
+{"HostConfig":{"Binds":["/usr/blueos/extensions/dashcam/videos/:/home/blueos/videos/","/root/.config/blueos/ardupilot-manager/firmware/logs/:/home/blueos/logs/","/usr/blueos/extensions/dashcam/settings/:/home/blueos/settings/"],"CpuQuota":400000,"CpuPeriod":100000,"ExtraHosts":["blueos.internal:host-gateway"],"PortBindings":{"8080/tcp":[{"HostPort":""}]}}}'
 
 LABEL authors='[\
     {\
